@@ -5,8 +5,8 @@ Depository of the group work
 
 This project was a collaborative effort completed as part of the Big Data in Social Sciences course under the guidance of Professor Barban. I would like to express my gratitude to my fellow group members, whose dedication and teamwork were instrumental in the successful completion of this project:
 
-- **Sarah Bertoni**
-- **Antonio Caggianelli**
+- **[Sarah Bertoni](https://github.com/sarah-bertoni)**
+- **[Antonio Caggianelli](https://github.com/antoniocaggianelli)**
 - **Maria Carlotta Magnaguagno**
 - **Mattia Malipiero**
 
