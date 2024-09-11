@@ -1,0 +1,354 @@
+---
+title: "Fertility"
+format: pdf
+editor: visual
+---
+
+## Dataset tidying and merging
+
+#### 1) Importing the dataset
+
+```{r}
+library(tidyverse)
+library(corrplot)
+library(binsreg)
+
+
+Fertility <- read_csv("Fertility.csv")
+View(Fertility)
+fertility <- Fertility
+```
+
+#### 2) Tidying dataset
+
+```{r}
+fertility <- fertility %>% select(-c(TIPO_DATO15, `Flag Codes`, Flags, `Seleziona periodo`, ITTER107))
+fertility<- fertility %>%  group_by(Territorio) %>% filter(TIME== 2021) %>%  distinct()
+
+```
+
+#### 3) Pivot wider
+
+```{r}
+fertility <- fertility %>% group_by(Territorio) %>% pivot_wider(names_from = c(`Tipo dato`), values_from = Value)  %>%  select(!TIME)
+
+```
+
+#### 4) Summary
+
+```{r}
+
+summary(fertility)
+
+```
+
+#### 
+
+## Childcare
+
+#### 1) Import dataset
+
+```{r}
+library(readr)
+DCIS_SERVSOCEDU1_27112023145214126 <- read_csv("DCIS_SERVSOCEDU1_27112023145214126.csv")
+Social_Services <- DCIS_SERVSOCEDU1_27112023145214126
+View(Social_Services)
+```
+
+#### 2) Tidying: Social Services
+
+```{r}
+soc_serv <- Social_Services 
+soc_serv<- soc_serv %>%  filter(`Tipo di servizio socio-educativo`!= "spazi gioco" & `Tipo dato`== 'posti autorizzati per 100 bambini di 0-2 anni' & `Settore del titolare`== 'totale' & `Tipo di servizio socio-educativo` != "tutte le voci")
+soc_serv<- soc_serv %>% select(-c(TIPSERVSOC, SETTORE, `Settore del titolare`, `Seleziona periodo`, `Flag Codes`, Flags, TIPO_DATO_SERV_SOC, ITTER107))
+
+soc_serv <- soc_serv %>% group_by(Territorio, TIME) %>% summarise("Total_places"= sum(Value))
+soc_serv_years<- soc_serv %>% pivot_wider(names_from = c(TIME), values_from = Total_places)
+
+
+ 
+
+```
+
+#### 4) Childcare places availability mean 2017 to 2021
+
+```{r}
+soc_serv_mean <- soc_serv %>%  group_by (Territorio) %>% summarise (childcare_2017_2021_mean = mean(Total_places))
+summary(soc_serv_years)
+```
+
+## Childcare & Fertility
+
+```{r}
+Childcare_Fertility <- inner_join(soc_serv_mean, fertility, by = join_by(Territorio))
+Childcare_Fertility <- `Childcare_Fertility` %>% rename ('Total fertility index' =`tasso di fecondità totale`, 'Places in childcare' = childcare_2017_2021_mean, 'Average fathers age' = 'età media dei padri alla nascita del figlio', 'Average mothers age' = 'età media delle madri al parto', 'Territory' = 'Territorio' )
+
+Childcare_Fertility <- Childcare_Fertility %>%  relocate(`Total fertility index`, .after = Territory)
+summary(Childcare_Fertility)
+```
+
+```{r}
+Childcare_Fertility <- Childcare_Fertility %>%  arrange(desc(`Total fertility index`))
+```
+
+## Omitted Variables
+
+### A) Gender Occupation
+
+```{r}
+## Donne che lavorano
+
+library(readr)
+library(tidyverse)
+library(ggplot2)
+DCCV_TAXOCCU1_30112023101631613 <- read_csv("DCCV_TAXOCCU1_30112023101631613.csv")
+View(DCCV_TAXOCCU1_30112023101631613)
+'Employement Women' <- DCCV_TAXOCCU1_30112023101631613
+
+
+
+
+```
+
+#### 1) Filter
+
+```{r}
+library(dplyr)
+`Employement Women`<- `Employement Women` %>%  filter(Gender == 'females' & TITOLO_STUDIO == 99 & TIME == 2022 & ETA1 == 'Y15-64')
+
+```
+
+#### 2) Select
+
+```{r}
+
+`Employement Women`<- `Employement Women` %>% select(c(Territory, Value))
+`Employement Women`<- `Employement Women` %>% rename( 'Women employement rate' = Value)
+summary(`Employement Women`)
+
+```
+
+#### 3) Merge
+
+```{r}
+Childcare_Fertility<- Childcare_Fertility %>%  left_join (`Employement Women`, by = join_by(Territory))
+View(Childcare_Fertility)
+
+#Is it omitted variable?
+
+library(corrr)
+cor(Childcare_Fertility_[,2], Childcare_Fertility_[,4]) #   0.2728453
+cor(Childcare_Fertility_[,3], Childcare_Fertility_[,4]) # 0.9196262
+```
+
+### B) Income
+
+```{r}
+DCCV_REDNETFAMFONTERED_01122023102843294 <- read_csv("DCCV_REDNETFAMFONTERED_01122023102843294.csv")
+Income <- DCCV_REDNETFAMFONTERED_01122023102843294
+View(Income)
+
+```
+
+#### Tidying
+
+```{r}
+Income <- Income |>filter(`Data type` == 'annual average households income' , `Households main income source`== 'total', `Including or not including imputed`== 'not including imputed rents')
+Income <- Income %>% select(Territory, Value)
+Trentino <- as.data.frame(Income[8:9,2])
+Trentino <- mean(Trentino$Value)
+
+```
+
+#### Join
+
+```{r}
+library(dplyr)
+Childcare_Fertility_ <- Childcare_Fertility_ %>% left_join(Income) 
+Childcare_Fertility_ <- Childcare_Fertility_ %>% rename('Household Income' = Value) 
+#### Fill missing value
+Childcare_Fertility_[1,6]= Trentino
+```
+
+## PCA: Variables
+
+### A) Poverty
+
+#### 1) Importing the Dataset
+
+```{r}
+library(tidyverse)
+
+DCCV_AVQ_FAMIGLIE_01122023171754727 <- read_csv("Programming Lab/Project/Dataset usati/DCCV_AVQ_FAMIGLIE_01122023171754727.csv")
+'Economic condition perceived' <- DCCV_AVQ_FAMIGLIE_01122023171754727
+View(`Economic condition perceived`)
+```
+
+#### 2) Tidying Dataset
+
+```{r}
+`Economic condition perceived` <- `Economic condition perceived` %>% filter(TIME == 2021, Measure == 'per 100 households with the same characteristics')
+`Economic condition perceived` <- `Economic condition perceived` %>% select(Territory, 'Data type', Value)
+`Economic condition perceived` <- `Economic condition perceived` %>% pivot_wider(names_from = 'Data type', values_from = Value)
+
+
+`Economic condition perceived` <- `Economic condition perceived` %>% mutate('Poor' = (`Economic condition perceived`[,8] + `Economic condition perceived`[,9])) 
+
+`Economic condition perceived` <- `Economic condition perceived` %>% select(1,10)
+summary(`Economic condition perceived`)
+
+
+```
+
+#### 3) Merge
+
+```{r}
+Childcare_Fertility_ <- Childcare_Fertility %>% left_join(`Economic condition perceived`) %>%  rename('Poor Conditions' =`Poor`  )
+Childcare_Fertility_ <- Childcare_Fertility_ %>%  select(!4:5)
+
+
+
+```
+
+### B) Religion
+
+```{r}
+library(readr)
+religion <- read_csv("religion.csv")
+View(religion)
+Religion <- religion
+```
+
+#### Tidying
+
+```{r}
+
+Religion <- Religion %>% filter(!`Data type`== 'never', 
+Measure == 'per 100 people with the same characteristics',
+TIME == 2021)
+Religion <- Religion %>%  select(Territory, Value) 
+
+```
+
+#### Join
+
+```{r}
+Childcare_Fertility_ <- Childcare_Fertility_ %>%  left_join(Religion) %>% rename('Religion' = Value)
+
+
+```
+
+### C) Study years
+
+Previous reallignement with the aid of excel was necessary given that the dataset misplaced some values when downloaded; the dataset already only contains the data regarding women.
+
+```{r}
+library(readr)
+Popolazione_per_titolo_di_studio_e_regioni_IT1_52_1194_DF_DCCV_POPTIT1_UNT2020_2_1_0_2_ <- read_csv("Popolazione per titolo di studio e regioni (IT1,52_1194_DF_DCCV_POPTIT1_UNT2020_2,1.0) (2).csv")
+'Study years' <- Popolazione_per_titolo_di_studio_e_regioni_IT1_52_1194_DF_DCCV_POPTIT1_UNT2020_2_1_0_2_
+
+```
+
+#### Tidying
+
+```{r}
+library(tidyverse)
+library(dplyr)
+`Study years` <- `Study years` %>% filter(EDU_LEV_HIGHEST != 99)
+
+#Change the string values to year values
+
+`Study years` <- `Study years`  %>% 
+  mutate(years_study = case_when( EDU_LEV_HIGHEST == 3 ~ 5,
+  EDU_LEV_HIGHEST == 4 ~ 8,
+ EDU_LEV_HIGHEST == 5 ~ 11,
+   EDU_LEV_HIGHEST == 6 ~ 13,
+   EDU_LEV_HIGHEST == 11 ~ 16))
+
+`Study years` <- `Study years`  %>% rename(observations=Osservazione)
+`Study years` <- `Study years`  %>%   select(Territorio, years_study, observations)
+
+```
+
+#### Computing the regional study years average of women
+
+```{r}
+
+`Study years`<- `Study years` %>% 
+  mutate(product= years_study * observations)
+
+`Study years`<- `Study years` |>
+  group_by(Territorio) |>
+  mutate(totalyears_per_region=
+           sum(product))
+
+  
+  `Study years` <- `Study years` |>
+    group_by(Territorio) |>
+    mutate(total_n_per_region=sum(observations))
+
+
+  
+
+```
+
+```{r}
+`Study years` <- `Study years` |>
+  mutate('Regional study years average'= totalyears_per_region / total_n_per_region)
+
+`Study years`<-`Study years` |>
+  select(Territorio, 'Regional study years average')
+
+`Study years`<-`Study years` |>
+  distinct() %>%  rename(Territory = Territorio)
+
+view(`Study years`)
+```
+
+#### Join
+
+```{r}
+Childcare_Fertility_ <- Childcare_Fertility_ %>%  left_join((`Study years`), join_by(Territory))
+Childcare_Fertility_[7,8] = 10.467936
+
+```
+
+### D) Foreign residents
+
+#### Importing dataset
+
+```{r}
+library(tidyverse)
+library(dplyr)
+
+foreign_residents<-read_csv("stranieri residenti.csv", show_col_types = FALSE)
+foreign_residents <- stranieri_residenti
+view(foreign_residents)
+```
+
+#### Tidying dataset
+
+```{r}
+foreign_residents<-foreign_residents|>
+  filter(SEXISTAT1==9, ETA1=="TOTAL")|>
+  select(-ITTER107, -SEXISTAT1, -Gender, -Age, -TIME, -`Select time`, -`Flag Codes`, -Flags, -ETA1,-TIPO_DATO15) %>% distinct()
+```
+
+#### Pivot wider
+
+```{r}
+foreign_residents<-foreign_residents|>
+  group_by(Territory)|>
+  pivot_wider(names_from = `Demographic data type`, values_from = Value)
+```
+
+#### Join
+
+```{r}
+
+Childcare_Fertility_ <- Childcare_Fertility_ %>% 
+  left_join(foreign_residents)|> rename(foreign_residents = 'population on 1st January')
+## Fill missing value
+Childcare_Fertility_[1,9]= foreign_residents[32,2]+ foreign_residents[34,2]
+  
+```
