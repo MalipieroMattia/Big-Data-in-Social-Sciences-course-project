@@ -14,4 +14,4 @@ Here are the links to the original datasets used to create the `.RData` file:
 - [Household Income](http://dati.istat.it/index.aspx?queryid=22919)
 - [Religion](http://dati.istat.it/index.aspx?queryid=24349)
 
-This is a reference to the original data sources used in the analysis.
+This provides an easy reference to the original data sources used in the analysis.
