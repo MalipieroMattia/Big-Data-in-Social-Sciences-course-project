@@ -7,6 +7,8 @@ This project analyzes the relationship between childcare services and fertility 
 
 - **data/**: Contains the dataset used in the analysis.
     - `Enviroment_Fertility.RData`: A processed dataset on fertility rates and childcare services in Italy.
+    - The `README.md` in this folder contains links to the original datasets used.
+
 
 - **reports/**: Contains final reports.
     - `big data final report.qmd`: The Quarto markdown file for the final report.
