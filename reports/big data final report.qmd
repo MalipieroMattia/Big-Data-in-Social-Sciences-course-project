@@ -1,0 +1,293 @@
+---
+title: "Final Report-Big Data in Social Sciences 23/24"
+author: "Bertoni 1020372, Caggianelli 1019175, Magnaguagno 1024143, Malipiero 1024188"
+output:
+  quarto::pdf_document:
+    latex_engine: xelatex
+format: 
+  html:
+    fontsize: "8pt"
+editor: visual
+execute:
+  echo: true
+  warning: false
+---
+
+```{r setup, include=FALSE}
+load("C:/Users/ACER/Desktop/Enviroment Fertility.RData")
+
+library(readr)
+library(eurostat) 
+library(sf) 
+library(tidyverse) 
+library(viridis) 
+library(scales) 
+library(ggplot2)
+library(binsreg)
+library(tibble)
+library(ggrepel)
+library(gridExtra)
+library(knitr)
+library(broom)
+library(factoextra)
+```
+
+# Childcare Services and Fertility Rates: a rational model of parenthood?
+
+## Overview of the phenomenon
+
+Fertility rates have been decreasing in most of Europe for several decades and they are no longer sufficient to ensure the long-term replacement of the population. Italy is one of the lowest in Europe: its total fertility rate (TFR) was 1.27 in 2019 (World Bank, 2021) and 1.25 in 2021 (Eurostat). This will predictably have enormous consequences, especially in financial terms, in sectors like health care and pensions. 
+
+We have decided to investigate this phenomenon focusing on the possible relationship between higher fertility rates and the availability of childcare services. This perspective comes from the hypothesis that the determinants of below-replacement fertility might be related, among other factors, to the so-called "worker-mother conflict". Therefore, improvements in childcare availability (and so a decrease in its costs) might have a positive impact on fertility. In a similar model, childbearing would be considered in practice as a rational decision, in which parents weight the costs and benefits of having children and any reduction in the direct or indirect cost of children would produce an "increase in the demand" for children.
+
+The aim of our research is thus to study a possible causal effect of an improvement in childcare availability on fertility rates. We have chosen to group our data by territory and use Italian Regions as units of a cross-sectional analysis.
+
+### Regional Italian Fertility Index
+
+We could not find a unique dataset with all the information we needed about this phenomenon, so we have chosen different datasets from the ISTAT database and we have prepared them to meet our needs.
+
+```{r}
+kable(summary(Childcare_Fertility_[,2:9]))
+```
+
+We firstly imported the data about reproductive behavior in Italy. The variable that indicates the average fertility rate in each Region (2021) was named "Total fertility index".
+
+We illustrated the distribution of fertility rates on the Italian territory through a map, using the regional coordinates data from the eurostat map (nuts level = 2) and joining those data and the data from our dataset. Regions were then divided into four groups using the intervals of fertility rates given by the quartiles.
+
+```{r}
+geo_data <-get_eurostat_geospatial(nuts_level=2)
+italy_lim<- list(
+xlim = c(5, 19),
+ylim = c(35, 47.5) 
+)
+
+geodata2 <- geo_data %>%  rename(Territory = NAME_LATN)  %>%  filter(CNTR_CODE== 'IT')
+
+mapdata_reg <- geodata2 %>% 
+left_join(Childcare_Fertility_[,1:2]) 
+
+```
+
+```{r}
+mapdata_reg[10, 12 ] = 1.724 #Trento 
+mapdata_reg[9, 12] = 1.428 #Bolzano 
+mapdata_reg[12, 12] = 1.298 #Valle d'Aosta
+```
+
+```{r}
+mapdata_reg <- mapdata_reg %>% mutate(cat=cut(`Total fertility index`, breaks = c(0.966, 1.195, 1.258,1.320,1.724 )))
+
+map_fert_reg <- ggplot(data = mapdata_reg ) +
+geom_sf(aes(fill = cat), color = "black") +
+scale_fill_viridis_d(option = "magma", name = "TFT", direction = -1) +
+theme_bw() +
+coord_sf(xlim = italy_lim$xlim,
+ylim = italy_lim$ylim, expand = FALSE) +
+theme(
+legend.position = "top",
+legend.title = element_text(size = 14),
+legend.text = element_text(size = 10),
+legend.background = element_rect(fill = "white")) +
+labs(title = "Total Fertility Rate")  
+
+```
+
+## Childcare availability
+
+We then imported the data about childcare services: in particular, we have chosen to use the average number of available places in childcare out of one-hundred children (0-2 years old) in that Region. We did not use public expenditure for childcare because we considered possible "economies of scale" effects and a consistent difference in wages and costs of childcare provision across Regions. The variable was called "Places in childcare". We used data on public and private, but also employer-provided childcare. This last category might have a quite significant impact on our analysis, given the fact that "high-level" employees - that are more concentrated in the Centre-North of Italy - are also those who are more likely to access this kind of service. We excluded "recreational spaces" from the original dataset because we found it irrelevant for our purposes. We have chosen to average the variable of interest in a span of time of five years: in this way, we tried to capture the "perception" of the individual on availability of childcare services, rather than the actual current number that the common citizen may not be aware of. Purely monetary benefits were excluded from the analysis because we assumed they are similarly distributed across the Italian territory, depending on individual needs. Furthermore, for simplicity and data availability reasons, we assumed that black market for childcare (babysitting etc...) has an almost uniform distribution across Italian Regions and so it does not have a significant impact on variations in fertility rates. Similarly to what we did with fertility, we used a map to illustrate the distribution of childcare services on the Italian territory.
+
+***Plot regional TFR and places in childcare***
+
+```{r}
+mapdata_reg_soc <- geodata2 %>% 
+left_join(Childcare_Fertility_[,c(1,3)]) %>%  filter(CNTR_CODE== 'IT')
+mapdata_reg_soc[10, 12 ] = 77.30 #Trento
+mapdata_reg_soc[9, 12] = 51.76 #Bolzano
+mapdata_reg_soc[12, 12] = 82.00 #Valle d'Aosta
+
+mapdata_reg_soc <- mapdata_reg_soc %>% mutate(cat=cut(`Places in childcare`, breaks = c(19.5, 41.61, 60.06,67.54, 82.42) )) 
+
+map_fert_reg_soc <- ggplot(data = mapdata_reg_soc ) +
+geom_sf(aes(fill = cat), color = "black") +
+scale_fill_viridis_d(option = "magma", name = "TFT", direction = -1) +
+theme_bw() +
+coord_sf(xlim = italy_lim$xlim,
+ylim = italy_lim$ylim, expand = FALSE) +
+theme(
+legend.position = "top",
+legend.title = element_text(size = 14),
+legend.text = element_text(size = 10),
+legend.background = element_rect(fill = "white")) +
+labs(title = "Childcare availability") 
+
+grid.arrange(map_fert_reg_soc, map_fert_reg, nrow=1 )
+```
+
+### Single variable linear regression
+
+We started by producing a linear regression describing the causal relationship between the 'total fertility rate' dependent variable and the 'places in childcare' indipendent variable.
+
+```{r}
+Childcare_Fertility_lm <-lm(data = Childcare_Fertility_, formula =  `Total fertility index`~ `Places in childcare`)
+
+summary(Childcare_Fertility_lm)
+```
+
+We found a regression coefficient equal to 0.0001849, which means that on average an additional available place in childcare services (for 100 children) would produce a 0.0001849 increase in the fertility rate of that Region. We found a R squared equal to 0.001056, which means that 0.001056 of the variance of the fertility rate is explained by the dependent variable. The standard error is equal to 0.0013401. The p- value associated with Places in Childcare is equal to 0.8918, which means the causal effect of the independent variable on the fertility rate is not statistically significant.
+
+```{r}
+#plotting the regression
+potential_outliers_fert <- Childcare_Fertility_ %>%  filter(`Places in childcare` > 60 & `Total fertility index` > 1.5 | `Places in childcare`> 40 & `Total fertility index`< 1.1)
+
+Childcare_Fertility_plot <- Childcare_Fertility_ %>% filter(!(`Places in childcare` > 60 & `Total fertility index` > 1.5 | `Places in childcare`> 40 & `Total fertility index`< 1.1)) %>% 
+  ggplot(aes(x=`Places in childcare`, y=`Total fertility index`, labels(Territory))) +
+  geom_point(color= 'violet') +
+  theme_bw()+
+    geom_smooth(formula = y ~ x , method= 'loess', color = "magenta", se = T) +
+  labs(
+    title = "Childcare & Fertility",
+    x= "Childcare places for 100 children 0-2 years old",
+    y= "Regional Fertility rate",
+    caption = "Data ISTAT (2017-2021)",
+    subtitle = "Correlation between regional available places in childcare and the corresponding fertility rates", color= 'violet') +
+  geom_point(data=potential_outliers_fert) +
+  geom_text_repel(data = Childcare_Fertility_, color= 'purple',
+                  size= 3,
+            aes(label = Territory))
+
+Childcare_Fertility_plot
+```
+
+### Multiple variable regression
+
+Given the small and statistically not-significant coefficient found in the single variable regression, we tried to correct a possible omitted variable bias through a multiple variable regression. In fact, we found implausible the possibility of the variable 'Places in childcare' being a satisfactory description of such a complex mechanism, that involves several personal factors and complicated decisions. Thus we controlled for other two possible regressors, that might have a statistically relevant impact on fertility rates:
+
+1.  *The first one is women's occupational status (Women employment rate):* We have imported the dataset from ISTAT and we have called the variable "Women employment rate". In particular, the variable reflects the percentage of employed women (age 15-64) in that Region in 2022. This variable was chosen due to the fact that female employment might have a negative effect on the decision to become a mother (and vice-versa), because of the incompatibility between work and family responsibilities. For the same reason, there might also be a possible "postponement effect" after having the first child on subsequent births. However, on the other hand, employment may also have a positive impact on fertility in terms of improved economic conditions.
+
+2.  *The second one is economic status of the family (Household Income)*: Economic difficulties might be a leading cause for not wanting more children (ISTAT, 2017) and, in a rational choice model, an increase in income would be expected to result in an increase in the number of children. Therefore, we have included a variable indicating average household's income in each Region, and we have named it "Household income".
+
+We started by computing the correlation between the omitted variables and the fertility rate, as well as the one between the two variables and childcare. A correlation with the independent variable different from zero would suggest a possible causal relationship, while a correlation with the regressor is a necessary condition for omitted variable bias (for the sake of being more concise we will include in the table also other variables that will be used later in the analysis)
+
+```{r}
+ kable(Childcare_Fertility_[,2:9] %>% 
+  cor(use = "pairwise.complete.obs"), caption = "Correlation Table") 
+```
+
+We then produced a multiple linear regression containing these additional two variables. The variable of income was introduced with a linear-log regression, in order to tackle the probable decreasing marginal effect of income on the fertility rate. Moreover, we introduced an interaction term between "Women employement rate" and "Household Income", that allows to account for the interaction between the omitted variables and, therefore, to investigate their role in a possible further analysis.
+
+```{r}
+lm_final <- lm(formula = `Total fertility index` ~ (`Places in childcare`+ `Women employement rate` + log(`Household Income`) + (`Women employement rate` * `Household Income`)  ), data = Childcare_Fertility_)
+
+summary(lm_final)
+```
+
+The multiple regression resized our main coefficient and it improved the fit of the model measured by the adjusted multiple R-squared up to 0.8191. However, this might be due to the fact that we are adding variables rather than to an actual improvement of the explanatory power of the model. Even if jointly statistically significant, as revealed by the p-value related to the F-statistic of 18.21 (5, 14 degrees of freedom) , all the coefficients are quite small.
+
+In general, the analysis presented suggests that the effect of the availability of childcare services may have a very small effect on fertility in Italy. On the contrary, it seems to be more influenced by the other factors included in the multiple analysis.
+
+### Exploratory analysis
+
+Given the poor results of our multiple variable regression, we have tried to move to an exploratory type of analysis, in order to better understand the principal factors that might explain the variation in fertility rates among regions. We have taken in consideration some other factors that might be somehow impactfull and we tested their correlation with our variable of interest.
+
+a)  *Perception of poverty*: firstly, a variable indicating the perceived economic conditions of families in the last twelve months (in 2021) was chosen. We considered the fact that, in our case, an increase in income may alternatively result in higher expenditure on fewer children (higher quality education, expensive clothes, etc...) rather than higher fertility. The Dataset included the perception of one-hundred households and it indicated the percentage of answers reflecting respectively a "absolutely insufficient", "scarce", "adequate" and "very good" perceived economic status. We selected the percentage of households in each Region who declared to be in an overall bad economic condition (so "scarce" and "absolutely insufficient") and we called the variable "*Poor conditions\$scarce*".
+
+b)  *Religion*: cultural and religious differences might be considered as a component of fertility choices: many Faiths could be said to bear a predominant attitude towards marriage and maternity, that might influence individual preferences on the number of children. We therefore chose to include a variable indicating the percentage of religious individuals in a Region and we called the variable "Religion" (any religion was included).
+
+c)  *Female educational level*: we considered the fact that, apart from women occupational status, also female education might be an important variable when analyzing reproductive behavior. More educated women might have higher level jobs that they would be reluctant to put aside when having a baby; on the other hand, more educated women might also have more intellectual (and so flexible) jobs, so they might be facilitated in conciliating the difficulties that come with having children. Furthermore, education might also shape a person's preferences in terms of the preferred number of children. We therefore imported data illustrating average qualifications among women in each Region and we called the variable "Study years".
+
+d)  *Foreign residents*: the presence of immigrants and foreign nationals is often regarded as an indicator of an enhanced reproductive behaviour, usually having higher fertility rates compared to the native population. This might be true usually due to the fact that immigrants tend to be younger and different cultures can put a different emphasis on the importance of family size. Some immigrant communities also have stronger networks which might provide a more available support system for childbearing and childhood. For this variable we decided to use data on foreign nationals who have the residence in Italy for a more relevant indicator of this effect in the stable Italian population. In particular, the variable "foreign residents" indicates the amount of non-italian nationals currently residing in each region.
+
+```{r}
+corrmatrix <- cor(Childcare_Fertility_[,2:9])
+```
+
+***Principal Component Analysis***
+
+After we improved the dataset through the addition of four variables, we used Principal Components Analysis in order to conduct a deeper analysis on the variability of fertility rates in Italy. Since the dataset's complexity increased, this tool was crucial in the reduction of our dataset dimensionality, whilst preserving as much information as possible needed for the additional analysis to be carried out. Additionally, given that PCA focuses on capturing variance in the data, it can be used as a tool for noise reduction, thus filtering out irrelevant information and identifying the crucial features in the data. This leads to an easier and more robust understanding of varying fertility rates between different regions.
+
+```{r}
+Scaled_Dataset <- scale(Childcare_Fertility_[,2:9])
+row.names(Scaled_Dataset) <- Childcare_Fertility_$Territory
+
+PCA <- Scaled_Dataset %>% prcomp()
+PCA %>%   tidy(matrix= "eigenvalues")
+```
+
+In order to simplify the understanding of the results of the PCA we made a numerical and visual summary, giving insights on which variables contribute most to the principal components and their respective weight. In the graph is highlighted the strength and direction of the association between each variable and the first two principal components.
+
+```{r}
+#PCA Var
+PCA_var <- PCA|>
+  tidy(matrix="rotation")|>
+  pivot_wider(names_from="PC", names_prefix="PC", values_from="value")|>
+  rename(Variable=column)|>
+  mutate(Variable=stringr::str_to_title(Variable))|>
+  mutate(Variable=stringr::str_replace_all(Variable, "_", ""))
+  
+kable(head(PCA_var)) 
+PCA_variances <-ggplot(data = PCA_var, aes(PC1, PC2))+
+  geom_segment(xend=0, yend=0, arrow=arrow(length = unit(0.3, "cm"), type="closed",ends="first"), color="blue")+geom_text_repel(aes(label=Variable), hjust=1, size=3.5, min.segment.length = Inf, nudge_x = 0.02, nudge_y = 0.02)+coord_fixed()+labs(title = "PCA graph", x="PC1", y="PC2")+theme_light() 
+
+
+PCA_variances
+```
+
+***Clustering***
+
+On the context of our exploratory data analysis we deemed helpful grouping the observations in order to observe underlying connections. We chose a cluster analysis based on a k-means algorithm, which unsupervisedly grouped the data based on the number of clusters we chose, dividing them into groups with the smallest intra-cluster variations regarding the two main dimensions of the PCA. We chose a number of clusters equal to 3 by observing the graph plotting the within cluster variation for different values of k.
+
+```{r}
+set.seed(12345)
+#Rule of the elbow: search for the 'knee' in the within sum of square
+cluster_plot<-fviz_nbclust(Scaled_Dataset, kmeans, method = "wss")
+
+#the optimal number of clusters seems to be k=3
+set.seed(1234)
+k3 <- kmeans(Scaled_Dataset, centers = 3)
+fviz_cluster(k3, data= Scaled_Dataset, 
+             geom = c("points", "text"), 
+             show.clust.cent = T, 
+             main = "K-means clustering") 
+```
+
+The three clusters obtained draw an almost trivial picture: similarities across regions as explained by the principal components regarding the variables of interest result in groups of southern (and the island of Sardinia) and northern regions, with a third cluster formed by Lombardia, Emilia Romagna and Südtirol, regions which exhibit high levels of income, women empowerment and regional childcare as well as low poverty and above average fertility indexes.
+
+## **Conclusion**
+
+The overall analysis suggests that improved childcare services would probably represent an almost insignificant encouragement for childbearing.
+
+This might be due to many reasons. First of all, other not-analyzed factors may be operating, thus making it very difficult to isolate the impact of policies from other determinants.
+
+Secondly, the structure of the chosen model itself might have some problems. With regard to this, the first critical point concerns information and, in particular, imperfect information. A rational choice model relies on the assumption that individuals make decisions based on complete information about costs and benefits. However, for such complex issues it is more likely to observe a situation of imperfect information, where people act according to perceptions more than accurate information, so a small increase in childcare service might not even be perceived by the average person. Another limit is that our analysis considered only the presence of childcare services on the various territories, but not other individual differences in terms for example of quality or access to services. Furthermore, a particularly relevant issue might be the fact that we looked at regional averages (for data availability reasons), while in this case it would be more appropriate to study the phenomenon at the municipal level. Finally, also individual non-economic preferences might play a decisive role in determining fertility outcomes and these may vary across Regions. However, even if we tried to tackle these effect through other related variables, they clearly do not represent an exhaustive answer. This adds to the fact that, in general, surveys on preferences for the number of children bear many difficulties, as they might be volatile or they might reflect social expectations rather than real preferences.
+
+#### Bibliography
+
+Bauernschuster, Hener, Rainer, "Children of a (Policy) Revolution: the Introduction of Universal Child Care and its Effect on Fertility", CESifo, 2014, <https://www.cesifo.org/en/publications/2014/working-paper/children-policy-revolution-introduction-universal-child-care-and> .
+
+Brini, Pavolini, Scherer, "Culle piene solo con misure strutturali", Lavoce.info, 2023, <https://lavoce.info/archives/102647/culle-piene-solo-con-misure-strutturali/> .
+
+Dimai, "Shall we have another? Effects of daycare benefits on fertility, a case study in a region in Northeastern Italy", Springer, 2023, <https://genus.springeropen.com/articles/10.1186/s41118-023-00194-w#:~:text=The%20increase%20in%20public%20childcare,reviewed%20in%20Gauthier%20(2007)> .
+
+Gauthier, "The impact of family policies on fertility in industrialized countries: a review of the literature", Springer, 2007, <https://link.springer.com/article/10.1007/s11113-007-9033-x> .
+
+Imai, "Quantitative Social Sciences: An Introduction", Princeton University Press, Princeton, 2017 .
+
+Koka, Rapallini, "Italy's demographic trap: Voting for childcare subsidies and fertility outcomes", European Journal of Political Economy, 2023, <https://www.sciencedirect.com/science/article/abs/pii/S0176268022000672> .
+
+### Links to datasets used
+
+Fertility index: <http://dati.istat.it/Index.aspx?DataSetCode=DCIS_FECONDITA1&Lang=en>
+
+Childcare availability: <http://dati.istat.it/index.aspx?queryid=23229>
+
+Women employment: <https://esploradati.istat.it/databrowser/#/it/dw/categories/IT1,Z0500LAB,1.0/LAB_OFFER/LAB_OFF_EMPLOY/DCCV_TAXOCCU1/IT1,150_915_DF_DCCV_TAXOCCU1_4,1.0>
+
+Household income: <http://dati.istat.it/index.aspx?queryid=22919>
+
+Religion: <http://dati.istat.it/index.aspx?queryid=24349>
+
+Economic conditions: <http://dati.istat.it/index.aspx?queryid=22957> 
+
+Average regional study years : <https://esploradati.istat.it/databrowser/#/it/dw/categories/IT1,Z0820EDU,1.0/DCCV_POPTIT1_UNT2020/IT1,52_1194_DF_DCCV_POPTIT1_UNT2020_2,1.0>
+
+Foreign residents: <http://dati.istat.it/Index.aspx?DataSetCode=DCIS_POPSTRRES1#>
